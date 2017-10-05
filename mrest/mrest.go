@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"path"
 	"reflect"
+
+	"github.com/gorilla/mux"
 )
 
 type handlers map[string]bool
@@ -42,13 +44,17 @@ func (rs RestServer) setDummyData(d *interface{}) {
 }
 
 //GenMux generates the handlers.
-func GenMux(b string, d interface{}) {
+func GenMux(b string, d interface{}) *mux.Router {
 
-	loopMux(b, d)
-	applyMux(b, func(r *http.Request) interface{} { return d })
+	r := mux.NewRouter()
+
+	loopMux(b, d, r)
+	applyMux(b, func(*http.Request, *map[string]string) interface{} { return d }, r)
+
+	return r
 }
 
-func loopMux(b string, d interface{}) {
+func loopMux(b string, d interface{}, r *mux.Router) {
 	size := reflect.TypeOf(d).NumField()
 
 	for i := 0; i < size; i++ {
@@ -58,38 +64,43 @@ func loopMux(b string, d interface{}) {
 		n := f.Name
 
 		p := path.Join(b, n)
+		param, ok := f.Tag.Lookup("param")
+		if ok {
+			p = path.Join(p, "{"+param+"}")
+		}
 
 		if v.CanInterface() {
 			numMethods := v.NumMethod()
 			t := reflect.TypeOf(v.Interface())
 			if numMethods > 0 {
 				for j := 0; j < numMethods; j++ {
-					if t.Method(j).Name == "GETHandler" {
-						mi := v.MethodByName("Handler").Interface().(func(*http.Request) interface{})
-						applyMux(p, mi)
-						applyMux(p+"/", mi)
+					if t.Method(j).Name == "Handler" {
+						mi := v.MethodByName("Handler").Interface().(func(*http.Request, *map[string]string) interface{})
+						applyMux(p, mi, r)
+						applyMux(p+"/", mi, r)
 					}
 				}
 			}
 
 			g := v.Interface()
 			if v.Kind() == reflect.Struct {
-				loopMux(p, g)
+				loopMux(p, g, r)
 			}
-			applyMux(p, func(r *http.Request) interface{} { return g })
-			applyMux(p+"/", func(r *http.Request) interface{} { return g })
+			applyMux(p, func(*http.Request, *map[string]string) interface{} { return g }, r)
+			applyMux(p+"/", func(*http.Request, *map[string]string) interface{} { return g }, r)
 		}
 	}
 }
 
-func applyMux(path string, fn func(*http.Request) interface{}) {
+func applyMux(path string, fn func(*http.Request, *map[string]string) interface{}, r *mux.Router) {
 	_, ok := hlist[path]
 	if !ok {
 		hlist[path] = true
-		hf := func(w http.ResponseWriter, r *http.Request) {
-			resp := fn(r)
+		hf := func(w http.ResponseWriter, resp *http.Request) {
+			vars := mux.Vars(resp)
+			output := fn(resp, &vars)
 
-			o, err := json.Marshal(resp)
+			o, err := json.Marshal(output)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintf(w, err.Error())
@@ -99,6 +110,6 @@ func applyMux(path string, fn func(*http.Request) interface{}) {
 			fmt.Fprintf(w, string(o))
 		}
 
-		http.HandleFunc(path, hf)
+		r.HandleFunc(path, hf)
 	}
 }

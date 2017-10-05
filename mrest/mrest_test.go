@@ -8,7 +8,7 @@ import (
 )
 
 type StructTest struct {
-	Apple  apple
+	Apple  apple `param:"apple"`
 	Banana int
 	Carrot string
 	Cheese struct {
@@ -22,8 +22,10 @@ type apple struct {
 	Core string
 }
 
-func (a apple) Handler(r *http.Request) interface{} {
-	return fmt.Sprintf("%v, %v", a.text, r.RemoteAddr)
+func (a apple) Handler(r *http.Request, v *map[string]string) interface{} {
+	vars := *v
+	param := vars["apple"]
+	return fmt.Sprintf("%v, %v", a.text, param)
 }
 
 type SubTest struct {
@@ -38,8 +40,8 @@ func TestGenMux(t *testing.T) {
 	d.Apple.text = "Hello"
 	d.Apple.Core = "You look amazing!"
 
-	GenMux("/v1/", d)
+	r := GenMux("/v1/", d)
 
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":8081", r))
 
 }
