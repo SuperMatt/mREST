@@ -10,7 +10,7 @@ import (
 type StructTest struct {
 	Apple  apple `param:"apple"`
 	Banana int
-	Carrot string
+	Carrot string `param:"carrot"`
 	Cheese struct {
 		Cheddar bool
 	}
@@ -47,7 +47,6 @@ func TestGenMux(t *testing.T) {
 	var d StructTest
 
 	d.Version = "0.0.1"
-	d.Carrot = "I am a carrot"
 
 	r := GenMux("/v1/", d)
 

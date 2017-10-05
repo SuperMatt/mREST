@@ -50,13 +50,21 @@ func (rs RestServer) setDummyData(d *interface{}) {
 	rs.dummyData = d
 }
 
+func value(g interface{}, param string, r *Request) interface{} {
+	if param != "" {
+		return r.Vars[param]
+	}
+	return g
+}
+
 //GenMux generates the handlers.
 func GenMux(b string, d interface{}) *mux.Router {
 
 	r := mux.NewRouter()
 
 	loopMux(b, d, r)
-	rootFunc := func(*Request) interface{} { return d }
+
+	rootFunc := func(r *Request) interface{} { return d }
 	applyMux("GET", b, rootFunc, r)
 
 	return r
@@ -96,7 +104,8 @@ func loopMux(b string, d interface{}, r *mux.Router) {
 			if v.Kind() == reflect.Struct {
 				loopMux(p, g, r)
 			}
-			fn := func(*Request) interface{} { return g }
+
+			fn := func(r *Request) interface{} { return value(g, param, r) }
 			applyMux("GET", p, fn, r)
 		}
 	}
