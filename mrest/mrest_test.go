@@ -23,17 +23,15 @@ type apple struct {
 	Core string
 }
 
-func (a apple) GET(r *http.Request, v *map[string]string) interface{} {
+func (apple) GET(r *Request) interface{} {
 	text := "Hello"
 
-	vars := *v
-	param := vars["apple"]
+	param := r.Vars["apple"]
 	return fmt.Sprintf("%v, %v", text, param)
 }
 
-func (a apple) DELETE(r *http.Request, v *map[string]string) interface{} {
-	vars := *v
-	param := vars["apple"]
+func (apple) DELETE(r *Request) interface{} {
+	param := r.Vars["apple"]
 
 	text := "Deleted"
 

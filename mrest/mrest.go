@@ -11,9 +11,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type handlers map[string]bool
+//Request is
+type Request struct {
+	HTTPRequest *http.Request
+	Vars        map[string]string
+}
 
-var hlist = make(handlers)
+var hlist = make(map[string]bool)
 
 var methods = map[string]bool{"GET": true, "POST": true, "DELETE": true, "PATCH": true, "PUT": true}
 
@@ -52,7 +56,7 @@ func GenMux(b string, d interface{}) *mux.Router {
 	r := mux.NewRouter()
 
 	loopMux(b, d, r)
-	rootFunc := func(*http.Request, *map[string]string) interface{} { return d }
+	rootFunc := func(*Request) interface{} { return d }
 	applyMux("GET", b, rootFunc, r)
 
 	return r
@@ -81,7 +85,7 @@ func loopMux(b string, d interface{}, r *mux.Router) {
 					m := t.Method(j).Name
 					_, ok := methods[m]
 					if ok {
-						mi := v.MethodByName(m).Interface().(func(*http.Request, *map[string]string) interface{})
+						mi := v.MethodByName(m).Interface().(func(*Request) interface{})
 						applyMux(m, p, mi, r)
 
 					}
@@ -92,20 +96,20 @@ func loopMux(b string, d interface{}, r *mux.Router) {
 			if v.Kind() == reflect.Struct {
 				loopMux(p, g, r)
 			}
-			fn := func(*http.Request, *map[string]string) interface{} { return g }
+			fn := func(*Request) interface{} { return g }
 			applyMux("GET", p, fn, r)
 		}
 	}
 }
 
-func applyMux(m string, path string, fn func(*http.Request, *map[string]string) interface{}, r *mux.Router) {
+func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Router) {
 	key := m + path
 	_, ok := hlist[key]
 	if !ok {
 		hlist[key] = true
 		hf := func(w http.ResponseWriter, req *http.Request) {
-			vars := mux.Vars(req)
-			output := fn(req, &vars)
+			d := Request{Vars: mux.Vars(req), HTTPRequest: req}
+			output := fn(&d)
 
 			o, err := json.Marshal(output)
 			if err != nil {
