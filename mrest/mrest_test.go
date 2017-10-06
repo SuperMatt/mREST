@@ -24,19 +24,19 @@ type apple struct {
 	Core string
 }
 
-func (apple) GET(r *Request) interface{} {
+func (apple) GET(r *Request) (interface{}, int) {
 	text := "Hello"
 
 	param := r.Vars["apple"]
-	return fmt.Sprintf("%v, %v", text, param)
+	return fmt.Sprintf("%v, %v", text, param), http.StatusOK
 }
 
-func (apple) DELETE(r *Request) interface{} {
+func (apple) DELETE(r *Request) (interface{}, int) {
 	param := r.Vars["apple"]
 
 	text := "Deleted"
 
-	return fmt.Sprintf("%v, %v", text, param)
+	return fmt.Sprintf("%v, %v", text, param), http.StatusAccepted
 }
 
 type SubTest struct {
@@ -44,14 +44,15 @@ type SubTest struct {
 	Mayo    bool
 }
 
-func Respond(c int, i interface{}) interface{} {
+func Respond(c int, i interface{}, r *http.Request) interface{} {
 	type Response struct {
 		HTTPCode int
+		Source   string
 		Time     time.Time
 		Data     interface{}
 	}
 
-	return Response{HTTPCode: c, Time: time.Now(), Data: i}
+	return Response{HTTPCode: c, Source: r.RemoteAddr, Time: time.Now(), Data: i}
 }
 
 func TestGenMux(t *testing.T) {
@@ -59,7 +60,8 @@ func TestGenMux(t *testing.T) {
 
 	d.Version = "0.0.1"
 
-	r := GenMux("/v1/", d, Respond)
+	//r := GenMux("/v1/", d)
+	r := GenMuxWithResponder("/v1/", d, Respond)
 
 	log.Fatal(http.ListenAndServe(":8081", r))
 

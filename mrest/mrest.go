@@ -57,20 +57,28 @@ func value(g interface{}, param string, r *Request) interface{} {
 	return g
 }
 
-//GenMux generates the handlers.
-func GenMux(b string, d interface{}, rfn func(int, interface{}) interface{}) *mux.Router {
+//GenMux will generate the mux, with a default return format
+func GenMux(b string, d interface{}) *mux.Router {
+	fn := func(c int, i interface{}, r *http.Request) interface{} {
+		return i
+	}
+	return GenMuxWithResponder(b, d, fn)
+}
+
+//GenMuxWithResponder will generate a mux where the user can set the default format
+func GenMuxWithResponder(b string, d interface{}, rfn func(int, interface{}, *http.Request) interface{}) *mux.Router {
 
 	r := mux.NewRouter()
 
 	loopMux(b, d, r, rfn)
 
-	rootFunc := func(r *Request) interface{} { return d }
+	rootFunc := func(r *Request) (interface{}, int) { return d, http.StatusOK }
 	applyMux("GET", b, rootFunc, r, rfn)
 
 	return r
 }
 
-func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}) interface{}) {
+func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}, *http.Request) interface{}) {
 	size := reflect.TypeOf(d).NumField()
 
 	for i := 0; i < size; i++ {
@@ -93,7 +101,7 @@ func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}) 
 					m := t.Method(j).Name
 					_, ok := methods[m]
 					if ok {
-						mi := v.MethodByName(m).Interface().(func(*Request) interface{})
+						mi := v.MethodByName(m).Interface().(func(*Request) (interface{}, int))
 						applyMux(m, p, mi, r, rfn)
 
 					}
@@ -105,21 +113,21 @@ func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}) 
 				loopMux(p, g, r, rfn)
 			}
 
-			fn := func(r *Request) interface{} { return value(g, param, r) }
+			fn := func(r *Request) (interface{}, int) { return value(g, param, r), http.StatusOK }
 			applyMux("GET", p, fn, r, rfn)
 		}
 	}
 }
 
-func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Router, rfn func(int, interface{}) interface{}) {
+func applyMux(m string, path string, fn func(*Request) (interface{}, int), r *mux.Router, rfn func(int, interface{}, *http.Request) interface{}) {
 	key := m + path
 	_, ok := hlist[key]
 	if !ok {
 		hlist[key] = true
 		hf := func(w http.ResponseWriter, req *http.Request) {
 			d := Request{Vars: mux.Vars(req), HTTPRequest: req}
-			output := fn(&d)
-			resp := rfn(200, output)
+			output, code := fn(&d)
+			resp := rfn(code, output, req)
 
 			o, err := json.Marshal(resp)
 			if err != nil {
@@ -129,6 +137,7 @@ func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Route
 			}
 
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
 			fmt.Fprintf(w, string(o))
 		}
 
