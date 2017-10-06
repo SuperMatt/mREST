@@ -58,19 +58,19 @@ func value(g interface{}, param string, r *Request) interface{} {
 }
 
 //GenMux generates the handlers.
-func GenMux(b string, d interface{}) *mux.Router {
+func GenMux(b string, d interface{}, rfn func(int, interface{}) interface{}) *mux.Router {
 
 	r := mux.NewRouter()
 
-	loopMux(b, d, r)
+	loopMux(b, d, r, rfn)
 
 	rootFunc := func(r *Request) interface{} { return d }
-	applyMux("GET", b, rootFunc, r)
+	applyMux("GET", b, rootFunc, r, rfn)
 
 	return r
 }
 
-func loopMux(b string, d interface{}, r *mux.Router) {
+func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}) interface{}) {
 	size := reflect.TypeOf(d).NumField()
 
 	for i := 0; i < size; i++ {
@@ -94,7 +94,7 @@ func loopMux(b string, d interface{}, r *mux.Router) {
 					_, ok := methods[m]
 					if ok {
 						mi := v.MethodByName(m).Interface().(func(*Request) interface{})
-						applyMux(m, p, mi, r)
+						applyMux(m, p, mi, r, rfn)
 
 					}
 				}
@@ -102,16 +102,16 @@ func loopMux(b string, d interface{}, r *mux.Router) {
 
 			g := v.Interface()
 			if v.Kind() == reflect.Struct {
-				loopMux(p, g, r)
+				loopMux(p, g, r, rfn)
 			}
 
 			fn := func(r *Request) interface{} { return value(g, param, r) }
-			applyMux("GET", p, fn, r)
+			applyMux("GET", p, fn, r, rfn)
 		}
 	}
 }
 
-func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Router) {
+func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Router, rfn func(int, interface{}) interface{}) {
 	key := m + path
 	_, ok := hlist[key]
 	if !ok {
@@ -119,13 +119,15 @@ func applyMux(m string, path string, fn func(*Request) interface{}, r *mux.Route
 		hf := func(w http.ResponseWriter, req *http.Request) {
 			d := Request{Vars: mux.Vars(req), HTTPRequest: req}
 			output := fn(&d)
+			resp := rfn(200, output)
 
-			o, err := json.Marshal(output)
+			o, err := json.Marshal(resp)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintf(w, err.Error())
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, string(o))
 		}
