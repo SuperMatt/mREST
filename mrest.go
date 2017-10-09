@@ -1,3 +1,4 @@
+//Package mrest generates a gorilla mux from a specially formatted struct, to be used with net/http
 package mrest
 
 import (
@@ -11,44 +12,22 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//Request is
+//Request contains information about your request.
+//Pass a pointer to your method functions in order to access their data.
 type Request struct {
 	HTTPRequest *http.Request
 	Vars        map[string]string
 }
 
+//Data contains all of the information you may require for a response wrapper
+type Data struct {
+	Code    int
+	Request *http.Request
+	Data    *interface{}
+}
+
 var hlist = make(map[string]bool)
-
 var methods = map[string]bool{"GET": true, "POST": true, "DELETE": true, "PATCH": true, "PUT": true}
-
-//RestServer is the main configuration block for our restful apis
-type RestServer struct {
-	server    *http.Server
-	dummyData *interface{}
-}
-
-//NewRest creates a simple RestServer pointer.
-func NewRest(addr string, dummydata *interface{}) (r *RestServer, err error) {
-	h := &http.Server{Addr: addr}
-	r, err = NewRestWithServer(h, dummydata)
-	return r, err
-}
-
-//NewRestWithServer creates a server based on a pointer to an existing http.Server instance, allowing greater control
-func NewRestWithServer(h *http.Server, dummydata *interface{}) (r *RestServer, err error) {
-	var rs RestServer
-	rs.setServer(h)
-	rs.setDummyData(dummydata)
-	return &rs, nil
-}
-
-func (rs RestServer) setServer(h *http.Server) {
-	rs.server = h
-}
-
-func (rs RestServer) setDummyData(d *interface{}) {
-	rs.dummyData = d
-}
 
 func value(g interface{}, param string, r *Request) interface{} {
 	if param != "" {
@@ -59,14 +38,14 @@ func value(g interface{}, param string, r *Request) interface{} {
 
 //GenMux will generate the mux, with a default return format
 func GenMux(b string, d interface{}) *mux.Router {
-	fn := func(c int, i interface{}, r *http.Request) interface{} {
-		return i
+	fn := func(m *Data) interface{} {
+		return m.Data
 	}
 	return GenMuxWithResponder(b, d, fn)
 }
 
-//GenMuxWithResponder will generate a mux where the user can set the default format
-func GenMuxWithResponder(b string, d interface{}, rfn func(int, interface{}, *http.Request) interface{}) *mux.Router {
+//GenMuxWithResponder will generate a mux with a custom response wrapper
+func GenMuxWithResponder(b string, d interface{}, rfn func(*Data) interface{}) *mux.Router {
 
 	r := mux.NewRouter()
 
@@ -78,7 +57,7 @@ func GenMuxWithResponder(b string, d interface{}, rfn func(int, interface{}, *ht
 	return r
 }
 
-func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}, *http.Request) interface{}) {
+func loopMux(b string, d interface{}, r *mux.Router, rfn func(*Data) interface{}) {
 	size := reflect.TypeOf(d).NumField()
 
 	for i := 0; i < size; i++ {
@@ -119,7 +98,7 @@ func loopMux(b string, d interface{}, r *mux.Router, rfn func(int, interface{}, 
 	}
 }
 
-func applyMux(m string, path string, fn func(*Request) (interface{}, int), r *mux.Router, rfn func(int, interface{}, *http.Request) interface{}) {
+func applyMux(m string, path string, fn func(*Request) (interface{}, int), r *mux.Router, rfn func(*Data) interface{}) {
 	key := m + path
 	_, ok := hlist[key]
 	if !ok {
@@ -127,7 +106,8 @@ func applyMux(m string, path string, fn func(*Request) (interface{}, int), r *mu
 		hf := func(w http.ResponseWriter, req *http.Request) {
 			d := Request{Vars: mux.Vars(req), HTTPRequest: req}
 			output, code := fn(&d)
-			resp := rfn(code, output, req)
+			meta := Data{Code: code, Request: req, Data: &output}
+			resp := rfn(&meta)
 
 			o, err := json.Marshal(resp)
 			if err != nil {

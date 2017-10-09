@@ -44,7 +44,7 @@ type SubTest struct {
 	Mayo    bool
 }
 
-func Respond(c int, i interface{}, r *http.Request) interface{} {
+func Respond(d *Data) interface{} {
 	type Response struct {
 		HTTPCode int
 		Source   string
@@ -52,7 +52,7 @@ func Respond(c int, i interface{}, r *http.Request) interface{} {
 		Data     interface{}
 	}
 
-	return Response{HTTPCode: c, Source: r.RemoteAddr, Time: time.Now(), Data: i}
+	return Response{HTTPCode: d.Code, Source: d.Request.RemoteAddr, Time: time.Now(), Data: d.Data}
 }
 
 func TestGenMux(t *testing.T) {
